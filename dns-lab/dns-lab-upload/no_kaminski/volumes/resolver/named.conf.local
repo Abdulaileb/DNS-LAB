@@ -1,0 +1,5 @@
+zone "example.com" {
+    type forward;
+    forward only;
+    forwarders { 10.9.0.153; };
+};

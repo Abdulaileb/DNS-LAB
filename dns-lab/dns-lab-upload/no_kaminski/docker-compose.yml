@@ -1,0 +1,56 @@
+services:
+  client:
+    build:
+      context: ./docker/client
+    image: dns-lab-client:latest
+    container_name: client
+    tty: true
+    dns:
+      - 10.9.0.53
+    networks:
+      dns_net:
+        ipv4_address: 10.9.0.2
+
+  attacker:
+    build:
+      context: ./docker/attacker
+    image: dns-lab-attacker:latest
+    container_name: attacker
+    privileged: true
+    tty: true
+    dns:
+      - 10.9.0.53
+    volumes:
+      - ./solutions:/solutions
+    networks:
+      dns_net:
+        ipv4_address: 10.9.0.10
+
+  resolver:
+    image: ubuntu/bind9:latest
+    container_name: resolver
+    volumes:
+      - ./volumes/resolver/named.conf.options:/etc/bind/named.conf.options
+      - ./volumes/resolver/named.conf.local:/etc/bind/named.conf.local
+    networks:
+      dns_net:
+        ipv4_address: 10.9.0.53
+
+  authoritative:
+    image: ubuntu/bind9:latest
+    container_name: authoritative
+    volumes:
+      - ./volumes/authoritative/named.conf.local:/etc/bind/named.conf.local
+      - ./volumes/authoritative/named.conf.options:/etc/bind/named.conf.options
+      - ./volumes/authoritative/example.com.zone:/etc/bind/example.com.zone
+    networks:
+      dns_net:
+        ipv4_address: 10.9.0.153
+
+networks:
+  dns_net:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.9.0.0/24

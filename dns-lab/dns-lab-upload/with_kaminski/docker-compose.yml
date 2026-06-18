@@ -1,0 +1,55 @@
+services:
+  client:
+    build:
+      context: ./docker/client
+    image: dns-lab-k-client:latest
+    container_name: wk_client
+    tty: true
+    dns:
+      - 10.19.0.53
+    networks:
+      dns_net_k:
+        ipv4_address: 10.19.0.2
+
+  attacker2:
+    build:
+      context: ./docker/attacker
+    image: dns-lab-k-attacker:latest
+    container_name: wk_attacker2
+    privileged: true
+    tty: true
+    dns:
+      - 10.19.0.53
+    volumes:
+      - ./solutions:/solutions
+    networks:
+      dns_net_k:
+        ipv4_address: 10.19.0.10
+
+  resolver:
+    build:
+      context: ./docker/resolver
+    image: dns-lab-k-resolver:latest
+    container_name: wk_resolver
+    networks:
+      dns_net_k:
+        ipv4_address: 10.19.0.53
+
+  authoritative:
+    image: ubuntu/bind9:latest
+    container_name: wk_authoritative
+    volumes:
+      - ./volumes/authoritative/named.conf.local:/etc/bind/named.conf.local
+      - ./volumes/authoritative/named.conf.options:/etc/bind/named.conf.options
+      - ./volumes/authoritative/example.com.zone:/etc/bind/example.com.zone
+    networks:
+      dns_net_k:
+        ipv4_address: 10.19.0.153
+
+networks:
+  dns_net_k:
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.19.0.0/24
