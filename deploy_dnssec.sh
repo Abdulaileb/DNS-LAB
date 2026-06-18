@@ -68,43 +68,55 @@ echo "Zone signed -> ${SIGNED_FILE}"
 echo ""
 echo "=== Step 3.3: Switch authoritative to signed zone ==="
 
-# Replace the zone file path in named.conf.local inside the container
-docker exec "${AUTHORITATIVE}" bash -c "
-  sed -i 's|file \"${ZONE_FILE}\";|file \"${SIGNED_FILE}\";|g' /etc/bind/named.conf.local
-"
+# sed -i fails on Docker volume mounts ("Device or resource busy") because it
+# creates a temp file and renames it, which is blocked on bind-mounted files.
+# Writing directly with cat > overwrites in-place and works correctly.
+docker exec "${AUTHORITATIVE}" bash -c "cat > /etc/bind/named.conf.local << 'EOF'
+zone \"example.com\" {
+    type master;
+    file \"/etc/bind/example.com.zone.signed\";
+};
+EOF"
 
-# Restart named to reload the signed zone
-docker exec "${AUTHORITATIVE}" service named restart
+# Use docker restart instead of 'service named restart' inside the container.
+# named is PID 1 in the container — killing it stops the container entirely.
+# docker restart sends SIGTERM to PID 1, waits, then starts a fresh container.
+docker restart "${AUTHORITATIVE}"
+sleep 3  # wait for named to fully start
 echo "Authoritative nameserver restarted with signed zone."
 
 echo ""
 echo "=== Step 3.4: Configure resolver trust anchor ==="
 
-# Extract the KSK public key material (flag 257 = KSK, algorithm 8 = RSASHA256)
+# Extract the full KSK public key material (flag 257 = KSK, algorithm 8 = RSASHA256).
+# awk '{print $NF}' only gets the LAST space-separated field, which is wrong —
+# the base64 key spans multiple fields separated by spaces.
+# sed 's/.*DNSKEY 257 3 8 //' strips everything up to and including the type
+# field, leaving the complete multi-chunk key string intact.
 KSK_KEY=$(docker exec "${AUTHORITATIVE}" bash -c \
-  "grep -h 'DNSKEY 257 3 8' /etc/bind/K${ZONE}.*.key" \
-  | awk '{print $NF}')
+  "grep -h 'DNSKEY 257 3 8' /etc/bind/K${ZONE}.*.key | sed 's/.*DNSKEY 257 3 8 //'")
 
 echo "KSK public key (base64): ${KSK_KEY}"
 
-# Build the trusted-keys stanza to inject into named.conf.options
-TRUST_ANCHOR="trusted-keys { \"${ZONE}.\" 257 3 8 \"${KSK_KEY}\"; };"
+# Write the full resolver config with validation enabled and trust anchor injected.
+# Again using cat > instead of sed -i to avoid the volume-mount rename failure.
+docker exec "${RESOLVER}" bash -c "cat > /etc/bind/named.conf.options << EOF
+options {
+    directory \"/var/cache/bind\";
+    dnssec-validation auto;
+    listen-on-v6 { any; };
+    allow-query { any; };
+    query-source port 33333;
+};
 
-# Enable DNSSEC validation and inject the trust anchor in the resolver config
-docker exec "${RESOLVER}" bash -c "
-  # Switch from 'no' to 'auto' so the resolver validates signatures
-  sed -i 's/dnssec-validation no;/dnssec-validation auto;/' /etc/bind/named.conf.options
+trusted-keys {
+    \"${ZONE}.\" 257 3 8 \"${KSK_KEY}\";
+};
+EOF"
 
-  # Remove any previous trusted-keys block to avoid duplicates
-  sed -i '/^trusted-keys/d' /etc/bind/named.conf.options
-
-  # Append the new trust anchor before the closing brace of options {}
-  # We append it at end of file (outside options block) - both placements are valid
-  echo '${TRUST_ANCHOR}' >> /etc/bind/named.conf.options
-"
-
-# Restart resolver to apply the new validation config
-docker exec "${RESOLVER}" service named restart
+# Use docker restart for the same PID 1 reason as above.
+docker restart "${RESOLVER}"
+sleep 3  # wait for named to fully start
 echo "Resolver restarted with DNSSEC validation enabled."
 
 echo ""
