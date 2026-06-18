@@ -1,16 +1,6 @@
 """
-my_dig.py - Custom DNS query utility built with Scapy, mimicking core `dig` behavior.
+How to use:  python3 my_dig.py <domain> <dns_server> [query_type]
 
-Usage:
-    python3 my_dig.py <domain> <dns_server> [query_type]
-
-Arguments:
-    domain      - Domain name to query (e.g., www.example.com)
-    dns_server  - IP address of the DNS resolver
-    query_type  - (Optional) Record type: A, AAAA, MX, TXT, NS (default: A)
-
-Example:
-    python3 my_dig.py www.example.com 10.9.0.53 A
 """
 
 import sys
