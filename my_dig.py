@@ -1,16 +1,13 @@
-"""
-How to use:  python3 my_dig.py <domain> <dns_server> [query_type]
-
-"""
+"""How to use:  python3 my_dig.py <domain> <dns_server> [query_type] """
 
 import sys
 import random
-from scapy.all import IP, UDP, TCP, DNS, DNSQR, sr1
+from scapy.all import IP, UDP, DNS, DNSQR, sr1
 
 DNS_PORT = 53
 TIMEOUT = 5  # seconds to wait for a UDP response
 
-# Map numeric RTYPE to human-readable string for display
+# Mapping the numeric RTYPE to human-readable string for display
 RTYPE_NAMES = {
     1: "A",
     2: "NS",
@@ -28,36 +25,19 @@ RTYPE_NAMES = {
 def decode_name(raw):
     """
     Decode a DNS name field (bytes or str) to a clean dotted string.
-
-    Input:  raw - bytes or str, possibly trailing with a dot or b'.'
-    Output: str  - lowercase domain name without trailing dot
     """
     if isinstance(raw, bytes):
         return raw.decode(errors="replace").rstrip(".")
     return str(raw).rstrip(".")
 
 
+#Convert a numeric DNS record type to its string abbreviation. Eg: rtype:1 then output(str): A
 def rtype_str(rtype_int):
-    """
-    Convert a numeric DNS record type to its string abbreviation.
-
-    Input:  rtype_int - int, e.g. 1
-    Output: str       - e.g. "A"
-    """
     return RTYPE_NAMES.get(rtype_int, str(rtype_int))
 
 
+# sending a single DNS query over UDP and return the raw response packet.
 def send_query_udp(domain, dns_server, qtype):
-    """
-    Send a single DNS query over UDP and return the raw response packet.
-
-    Input:
-        domain     - str, domain name to query
-        dns_server - str, IP of the resolver
-        qtype      - str, record type (e.g. "A")
-    Output:
-        Scapy packet (with DNS layer) on success, or None on timeout/error
-    """
     txid = random.randint(0, 65535)
     sport = random.randint(1024, 65535)
 
@@ -66,7 +46,7 @@ def send_query_udp(domain, dns_server, qtype):
         / UDP(sport=sport, dport=DNS_PORT)
         / DNS(
             id=txid,
-            rd=1,  # Recursion Desired - ask resolver to recurse for us
+            rd=1,  # We ask resolver to recurse for us
             qd=DNSQR(
                 qname=domain,
                 qtype=qtype,
@@ -78,33 +58,24 @@ def send_query_udp(domain, dns_server, qtype):
     return sr1(pkt, timeout=TIMEOUT, verbose=0)
 
 
+## Print the QUESTION section of the DNS response in dig-like format.
 def print_question_section(dns_layer, qtype):
-    """
-    Print the QUESTION section of the DNS response in dig-like format.
 
-    Input:
-        dns_layer - Scapy DNS object from the response
-        qtype     - str, the query type we requested
-    Output: None (prints to stdout)
-    """
-    print(";; QUESTION SECTION:")
+    print("QUESTION SECTION:")
     if dns_layer.qd:
         qname = decode_name(dns_layer.qd.qname)
         print(f";{qname}.\t\t\tIN\t{qtype}")
     print()
 
 
+
+#### Print the ANSWER section of the DNS response.
 def print_answer_section(dns_layer):
     """
-    Print the ANSWER section of the DNS response.
-
-    Iterates over all resource records in the answer section and prints
+    I iterates over all resource records in the answer section and prints
     each record's name, TTL, class, type, and rdata.
-
-    Input:  dns_layer - Scapy DNS object from the response
-    Output: None (prints to stdout)
     """
-    print(";; ANSWER SECTION:")
+    print("ANSWER SECTION:")
     if not dns_layer.ancount:
         print(";; (no records)")
         print()
@@ -131,18 +102,10 @@ def print_answer_section(dns_layer):
     print()
 
 
-def print_response(response, domain, qtype):
-    """
-    Print a full dig-style report for the given DNS response.
 
-    Outputs the header (flags, counts), QUESTION, and ANSWER sections.
+### Print a full dig-style report for the given DNS response.
+def print_response(response, qtype):
 
-    Input:
-        response - Scapy packet (may be None if timeout)
-        domain   - str, originally queried domain
-        qtype    - str, query type
-    Output: None (prints to stdout)
-    """
     if response is None:
         print(f";; connection timed out; no servers could be reached")
         return
@@ -152,6 +115,7 @@ def print_response(response, domain, qtype):
         return
 
     dns = response[DNS]
+
 
     # --- Header ---
     rcode_map = {0: "NOERROR", 1: "FORMERR", 2: "SERVFAIL", 3: "NXDOMAIN",
