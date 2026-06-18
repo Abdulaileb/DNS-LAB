@@ -104,7 +104,7 @@ def print_answer_section(dns_layer):
 
 
 ### Print a full dig-style report for the given DNS response.
-def print_response(response, qtype):
+def print_response(response, domain, qtype):
 
     if response is None:
         print(f";; connection timed out; no servers could be reached")
@@ -115,7 +115,6 @@ def print_response(response, qtype):
         return
 
     dns = response[DNS]
-
 
     # --- Header ---
     rcode_map = {0: "NOERROR", 1: "FORMERR", 2: "SERVFAIL", 3: "NXDOMAIN",
