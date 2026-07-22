@@ -202,4 +202,4 @@ that underpins AI systems and cloud-native workloads. This lab is part of a broa
 practice of understanding attacks at the protocol level before applying controls
 at the platform level (AWS Route 53 DNSSEC, GCP Cloud DNS, Azure DNS, Kubernetes CoreDNS hardening).
 
-Connect with me on [LinkedIn](#) or follow my security write-ups here on GitHub.
+Connect with me on [LinkedIn](https://www.linkedin.com/in/abdulai-tamba-lebbie-9556919b/) or follow my security write-ups here on GitHub.
